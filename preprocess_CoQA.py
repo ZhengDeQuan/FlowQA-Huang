@@ -137,7 +137,7 @@ log.info('answer span for training is generated.')
 
 # features
 trC_tags, trC_ents, trC_features = feature_gen(trC_docs, train.context_idx, trQ_docs, args.no_match)
-#没有出现在github上啊
+#目前查看feature_gen()函数中，产生的feature都是什么
 
 log.info('features for training is generated: {}, {}, {}'.format(len(trC_tags), len(trC_ents), len(trC_features)))
 
