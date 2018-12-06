@@ -137,7 +137,8 @@ log.info('answer span for training is generated.')
 
 # features
 trC_tags, trC_ents, trC_features = feature_gen(trC_docs, train.context_idx, trQ_docs, args.no_match)
-#这里获得的是什么特征呢？再MS查看
+#没有出现在github上啊
+
 log.info('features for training is generated: {}, {}, {}'.format(len(trC_tags), len(trC_ents), len(trC_features)))
 
 def build_train_vocab(questions, contexts): # vocabulary will also be sorted accordingly
