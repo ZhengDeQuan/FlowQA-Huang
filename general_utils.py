@@ -187,7 +187,7 @@ def find_answer_span(context_span, answer_start, answer_end):#[[],[],[]]一句�
     else:
         return (t_start, t_end)
 
-def build_embedding(embed_file, targ_vocab, wv_dim):
+def build_embedding(embed_file, targ_vocab, wv_dim): #trag_vocab是一个list
     vocab_size = len(targ_vocab)
     emb = np.random.uniform(-1, 1, (vocab_size, wv_dim))
     emb[0] = 0 # <PAD> should be all 0 (using broadcast)

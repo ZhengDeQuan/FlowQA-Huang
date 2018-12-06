@@ -209,7 +209,7 @@ log.info('vocabulary for training is built.')
 # 接下来该看怎么获得向量的了
 
 
-tr_embedding = build_embedding(wv_file, tr_vocab, wv_dim)
+tr_embedding = build_embedding(wv_file, tr_vocab, wv_dim) #tr_vocab实际上是一个list ，返回的是一个numpy的array
 log.info('got embedding matrix for training.')
 
 meta = {
