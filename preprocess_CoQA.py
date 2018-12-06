@@ -88,9 +88,7 @@ def proc_train(ith, article):
 
 train, train_context = flatten_json(trn_file, proc_train)
 train = pd.DataFrame(train, columns=['context_idx', 'question', 'answer', 'answer_start', 'answer_end', 'rationale', 'rationale_start', 'rationale_end', 'answer_choice'])
-print("train.context_idx")
-print(train.context_idx)
-exit(890)
+
 
 log.info('train json data flattened.')
 # log.info("train = ")
@@ -228,8 +226,8 @@ for i, CID in enumerate(train.context_idx):
     if not (CID == prev_CID):
         first_question.append(i)
     prev_CID = CID
-print(train.context_idx)
-exit(890)
+
+
 result = {
     'question_ids': trQ_ids,
     'context_ids': trC_ids,
@@ -238,7 +236,7 @@ result = {
     'context_ents': trC_ent_ids, # Entity recognition
     'context': train_context, #list(str)
     'context_span': train_context_span, # train_context_span 这个list中的每个元素是[[],[],[]]一句话作为list，这句话里面的每个单词再是一个二元素的list
-    '1st_question': first_question,
+    '1st_question': first_question, # 更短的list，长度只有数据条目数
     'question_CID': train.context_idx.tolist(),
     'question': train.question.tolist(),
     'answer': train.answer.tolist(),
