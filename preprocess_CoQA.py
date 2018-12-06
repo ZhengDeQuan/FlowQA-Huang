@@ -10,13 +10,15 @@ import collections
 import multiprocessing
 import logging
 import random
+import pickle
+import os
 from allennlp.modules.elmo import batch_to_ids
 from general_utils import flatten_json, free_text_to_span, normalize_text, build_embedding, load_glove_vocab, pre_proc, get_context_span, find_answer_span, feature_gen, token2id
 
 parser = argparse.ArgumentParser(
     description='Preprocessing train + dev files, about 15 minutes to run on Servers.'
 )
-parser.add_argument('--wv_file', default='glove/glove.840B.300d.txt',
+parser.add_argument('--wv_file', default='/data1/zhengquan/data/wordvecs/glove.840B.300d.txt',
                     help='path to word vector file.')
 parser.add_argument('--wv_dim', type=int, default=300,
                     help='word vector dimension.')
@@ -87,9 +89,9 @@ def proc_train(ith, article):
 train, train_context = flatten_json(trn_file, proc_train)
 train = pd.DataFrame(train, columns=['context_idx', 'question', 'answer', 'answer_start', 'answer_end', 'rationale', 'rationale_start', 'rationale_end', 'answer_choice'])
 log.info('train json data flattened.')
-log.info("train = ")
-print(len(train))
-print(train)
+# log.info("train = ")
+# print(len(train))
+# print(train)
 
 trC_iter = (pre_proc(c) for c in train_context)
 trQ_iter = (pre_proc(q) for q in train.question)
@@ -140,7 +142,17 @@ trC_tags, trC_ents, trC_features = feature_gen(trC_docs, train.context_idx, trQ_
 #目前查看feature_gen()函数中，产生的feature都是什么
 
 log.info('features for training is generated: {}, {}, {}'.format(len(trC_tags), len(trC_ents), len(trC_features)))
+# log.info(str(len(trC_tags))) #样例的数目 3
+# log.info(str(len(trC_ents))) #样例的数目 3
+# log.info(str(len(trC_features))) #问题的数目 38
+# exit(67)
 
+# glove_vocab = load_glove_vocab(wv_file, wv_dim) # return a "set" of vocabulary
+# if not os.path.exists('/data1/zhengquan/data/temp'):
+#     os.mkdir('/data1/zhengquan/data/temp')
+# pickle.dump(glove_vocab,open('/data1/zhengquan/data/temp/glove_vocab.pkl',"wb"))
+glove_vocab = pickle.load(open("/data1/zhengquan/data/temp/glove_vocab.pkl","rb"))
+log.info('glove loaded.')
 def build_train_vocab(questions, contexts): # vocabulary will also be sorted accordingly
     if args.sort_all:
         counter = collections.Counter(w for doc in questions + contexts for w in doc)
@@ -163,22 +175,39 @@ def build_train_vocab(questions, contexts): # vocabulary will also be sorted acc
     return vocab
 
 # vocab
-tr_vocab = build_train_vocab(trQ_tokens, trC_tokens)
+tr_vocab = build_train_vocab(trQ_tokens, trC_tokens)#不在glove词典中的词就作为unk看待了 ,#tr_vocab实际上是一个list
+
+
 trC_ids = token2id(trC_tokens, tr_vocab, unk_id=1)
-trQ_ids = token2id(trQ_tokens, tr_vocab, unk_id=1)
+trQ_ids = token2id(trQ_tokens, tr_vocab, unk_id=1) #转化为id表示了
 trQ_tokens = [["<S>"] + doc + ["</S>"] for doc in trQ_tokens]
 trQ_ids = [[2] + qsent + [3] for qsent in trQ_ids]
+print("trQ_ids = ")
 print(trQ_ids[:10])
+
 # tags
+a = list(nlp.tagger.labels)
+# print("a = ",a)
+# print(len(a))
 vocab_tag = [''] + list(nlp.tagger.labels)
-trC_tag_ids = token2id(trC_tags, vocab_tag)
+# 这些tag的意义还不知道，有50个tag，不可能是人工写规则，即便是使用，也是在后端用word embedding的方式，弄一个tag embedding
+# print("vocab_tag = ",vocab_tag)
+# print(len(vocab_tag))
+# exit(789)
+trC_tag_ids = token2id(trC_tags, vocab_tag) #Context中的每个单词对应到id之后，没有单词是有tag的，这个tag也对应到tag_id上
 # entities
-vocab_ent = list(set([ent for sent in trC_ents for ent in sent]))
-trC_ent_ids = token2id(trC_ents, vocab_ent, unk_id=0)
+vocab_ent = list(set([ent for sent in trC_ents for ent in sent])) #在context中所出现的所有的命名实体类型全部归入到list中
+# print("vocab_ent = ",vocab_ent)
+# exit(789)
+
+trC_ent_ids = token2id(trC_ents, vocab_ent, unk_id=0) #这里怎么还会需要unk_id
 
 log.info('Found {} POS tags.'.format(len(vocab_tag)))
 log.info('Found {} entity tags: {}'.format(len(vocab_ent), vocab_ent))
 log.info('vocabulary for training is built.')
+# exit(89)
+# 接下来该看怎么获得向量的了
+
 
 tr_embedding = build_embedding(wv_file, tr_vocab, wv_dim)
 log.info('got embedding matrix for training.')

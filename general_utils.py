@@ -96,13 +96,13 @@ def flatten_json(file, proc_func):
 def normalize_text(text):
     return unicodedata.normalize('NFD', text)
 
-def load_glove_vocab(file, wv_dim):
+def load_glove_vocab(file, wv_dim):#file= "/data1/zhengquan/data/wordvecs/glove.840B.300d.txt" , dim = 300
     vocab = set()
     with open(file, encoding="utf8") as f:
         for line in f:
             elems = line.split()
             token = normalize_text(''.join(elems[0:-wv_dim]))
-            vocab.add(token)
+            vocab.add(token) #只是将token都加入到了set中，那么向量呢
     return vocab
 
 def space_extend(matchobj):
@@ -115,10 +115,18 @@ def pre_proc(text):
     text = re.sub('\s+', ' ', text)
     return text
 
-def feature_gen(C_docs, Q_CID, Q_docs, no_match):
+def feature_gen(C_docs, Q_CID, Q_docs, no_match):#Q_CID:train.context_idx , no_match:args.no_match help='do not extract the three exact matching features.'
     C_tags = [[w.tag_ for w in doc] for doc in C_docs]
     C_ents = [[w.ent_type_ for w in doc] for doc in C_docs]
     C_features = []
+
+    # print("C_tags = ",C_tags)
+    # print("C_ents = ",C_ents)
+    # C_tokens = [[normalize_text(w.text) for w in doc] for doc in C_docs]
+    # print("C_token = ",C_tokens)
+    # C_lemma = [[w.lemma_ if w.lemma_ != '-PRON-' else w.text.lower() for w in doc] for doc in C_docs]
+    # print("C_lemma = ",C_lemma)
+
 
     for question, context_id in zip(Q_docs, Q_CID):
         context = C_docs[context_id]
@@ -132,8 +140,10 @@ def feature_gen(C_docs, Q_CID, Q_docs, no_match):
         else:
             question_word = {w.text for w in question}
             question_lower = {w.text.lower() for w in question}
-            question_lemma = {w.lemma_ if w.lemma_ != '-PRON-' else w.text.lower() for w in question}
+            question_lemma = {w.lemma_ if w.lemma_ != '-PRON-' else w.text.lower() for w in question}  #lemma是将单词转回原形,比如lived-->live
             match_origin = [w.text in question_word for w in context]
+            # print("match_origin = ",match_origin)
+            # exit(798)
             match_lower = [w.text.lower() in question_lower for w in context]
             match_lemma = [(w.lemma_ if w.lemma_ != '-PRON-' else w.text.lower()) in question_lemma for w in context]
             C_features.append(list(zip(match_origin, match_lower, match_lemma, term_freq)))
