@@ -193,6 +193,7 @@ class QAModel(object):
 
     # allow the evaluation embedding be larger than training embedding
     # this is helpful if we have pretrained word embeddings
+    # you guys got elmo and bert hu..ug
     def setup_eval_embed(self, eval_embed, padding_idx = 0):
         # eval_embed should be a supermatrix of training embedding
         self.network.eval_embed = nn.Embedding(eval_embed.size(0),
