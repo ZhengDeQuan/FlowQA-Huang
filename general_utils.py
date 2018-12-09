@@ -210,11 +210,12 @@ def token2id(docs, vocab, unk_id=None):
 #================ For batch generation (train & predict) ===================
 #===========================================================================
 
-class BatchGen_CoQA:
+class BatchGen_CoQA:#从这里可以解答我的第二个疑惑，他是怎么滑窗的
     def __init__(self, data, batch_size, gpu, dialog_ctx=0, evaluation=False, context_maxlen=100000, precompute_elmo=0):
+    #batches = BatchGen_CoQA(dev, batch_size=args.batch_size, evaluation=True, gpu=args.cuda, dialog_ctx=args.explicit_dialog_ctx)
         '''
         input:
-            data - see train.py
+            data - see train_CoQA.py
             batch_size - int
         '''
         self.dialog_ctx = dialog_ctx
@@ -230,8 +231,7 @@ class BatchGen_CoQA:
         self.data = data
 
     def __len__(self):
-        return (self.context_num + self.batch_size - 1) // self.batch_size
-
+        return (self.context_num + self.batch_size - 1) // self.batch_size #context_num / batch_size 向上取整，如果是这么搞的话，恐怕真的是全部的sess都放进去，那么他就不用滑窗了，这个要搞死我了
     def __iter__(self):
         # Random permutation for the context
         idx_perm = range(0, self.context_num)
@@ -244,9 +244,19 @@ class BatchGen_CoQA:
             batch_idx = idx_perm[self.batch_size * batch_i: self.batch_size * (batch_i+1)]
 
             context_batch = [self.data['context'][i] for i in batch_idx]
-            batch_size = len(context_batch)
+            '''
+            data['context_ids'],
+            data['context_tags'],
+            data['context_ents'],
+            data['context'],
+            data['context_span'],
+            data['1st_question'],
+            data['context_tokenized']))
+            '''
+            batch_size = len(context_batch) #最后一个batch，可能不是像一般的那样，所以这里要重新计算一下
 
-            context_batch = list(zip(*context_batch))
+            context_batch = list(zip(*context_batch)) #解压 ， 各个又是分立的了
+            #context_ids , context_tags , context_ents , context , context_span , 1st_question , context_tokenized
 
             # Process Context Tokens
             context_len = max(len(x) for x in context_batch[0])
@@ -269,7 +279,7 @@ class BatchGen_CoQA:
                 select_len = min(len(doc), context_len)
                 context_ent[i, :select_len] = torch.LongTensor(doc[:select_len])
 
-            if self.precompute_elmo > 0:
+            if self.precompute_elmo > 0: #precompute_elmo = elmo_batch_size // batch_size = 12 // 1 , 每次预选多取这么多个batch的elmo词向量，是用空间换时间吗
                 if batch_i % self.precompute_elmo == 0:
                     precompute_idx = idx_perm[self.batch_size * batch_i: self.batch_size * (batch_i+self.precompute_elmo)]
                     elmo_tokens = [self.data['context'][i][6] for i in precompute_idx]
@@ -278,47 +288,66 @@ class BatchGen_CoQA:
                     context_cid = torch.LongTensor(1).fill_(0)
             else:
                 context_cid = batch_to_ids(context_batch[6])
+            # print("context_id = ",context_id.size())
+            # print("context_cid = ",context_cid.size())
+            # exit(78)
 
             # Process Questions (number = batch * Qseq)
             qa_data = self.data['qa']
-
+            '''
+            data['question_CID'],
+            data['question_ids'],
+            data['context_features'],
+            data['answer_start'],
+            data['answer_end'],
+            data['rationale_start'],
+            data['rationale_end'],
+            data['answer_choice'],
+            data['question'],
+            data['answer'],
+            data['question_tokenized']))
+            '''
             question_num, question_len = 0, 0
             question_batch = []
-            for first_QID in context_batch[5]:
+            for first_QID in context_batch[5]:#data['1st_question']
+                #first_QID 每个passage的第一个问题，的序号
                 i, question_seq = 0, []
                 while True:
                     if first_QID + i >= len(qa_data) or qa_data[first_QID + i][0] != qa_data[first_QID][0]: # their corresponding context ID is different
+                        #到达整个数据的末尾，或者到达这个passage对应的问题的末尾，就要break
                         break
-                    question_seq.append(first_QID + i)
-                    question_len = max(question_len, len(qa_data[first_QID + i][1]))
+                    question_seq.append(first_QID + i) # 只是记录问题的序号
+                    question_len = max(question_len, len(qa_data[first_QID + i][1]))# [1]->data['question_ids'], 记录这个问题的长度，还是为了最后算loss的时候，将无意义的内容置为0
+                    #这个question_len 没有设置长度限制，完全按照数据的来，可能是因为比较短吧
                     i += 1
                 question_batch.append(question_seq)
-                question_num = max(question_num, i)
+                question_num = max(question_num, i) #每个样例对应的问题数目也不一样。batch中这个维度也要统一
 
-            question_id = torch.LongTensor(batch_size, question_num, question_len).fill_(0)
+            question_id = torch.LongTensor(batch_size, question_num, question_len).fill_(0) #这里要跟之前一致，0是用来padding的
             question_tokens = []
             for i, q_seq in enumerate(question_batch):
                 for j, id in enumerate(q_seq):
                     doc = qa_data[id][1]
                     question_id[i, j, :len(doc)] = torch.LongTensor(doc)
-                    question_tokens.append(qa_data[id][10])
+                    question_tokens.append(qa_data[id][10]) #question_tokens 这个列表没有按照每个passage来装，只是装在一个list里面了
 
-                for j in range(len(q_seq), question_num):
-                    question_id[i, j, :2] = torch.LongTensor([2, 3])
+                for j in range(len(q_seq), question_num):#可能这个pasaage对应的问题数目没有那么多，所以需要将剩下的部分补齐
+                    question_id[i, j, :2] = torch.LongTensor([2, 3]) #这里不是补充一个2行3列，是补充一个2，和一个3，2应该对应<s> 3应该对应</s>
                     question_tokens.append(["<S>", "</S>"])
 
-            question_cid = batch_to_ids(question_tokens)
+            question_cid = batch_to_ids(question_tokens) #这里的question_tokens获取elmo的词向量，但是并没有像context一样一次性预取多条
 
             # Process Context-Question Features
-            feature_len = len(qa_data[0][2][0])
+            feature_len = len(qa_data[0][2][0]) # 目前是4种特征 (match_origin, match_lower, match_lemma, term_freq)
             context_feature = torch.Tensor(batch_size, question_num, context_len, feature_len + (self.dialog_ctx * 3)).fill_(0)
+                                                      #这里还是讲context_len重复了question_num次       args.explicit_dialog_ctx * 3 # dialog_act + previous answer， self.dialog_ctx = 1
             for i, q_seq in enumerate(question_batch):
                 for j, id in enumerate(q_seq):
-                    doc = qa_data[id][2]
-                    select_len = min(len(doc), context_len)
+                    doc = qa_data[id][2] #[2]-->data['context_features'],doc[(f1,f2,f3,f4),(f...),...,(f)]
+                    select_len = min(len(doc), context_len) #doc是一句话（context）中每个单词的feature，每个单词的feature总共有4种，所以len（doc）是实际的context的长度，而context_len,是外加的限制
                     context_feature[i, j, :select_len, :feature_len] = torch.Tensor(doc[:select_len])
 
-                    for prv_ctx in range(0, self.dialog_ctx):
+                    for prv_ctx in range(0, self.dialog_ctx): # self.dialog_ctx = 1 , 上面那个 *3 好像是因为ans choice有四种，然后实际的代码中只是处理了两种，第三种没有管
                         if j > prv_ctx:
                             prv_id = id - prv_ctx - 1
                             prv_ans_st, prv_ans_end, prv_rat_st, prv_rat_end, prv_ans_choice = qa_data[prv_id][3], qa_data[prv_id][4], qa_data[prv_id][5], qa_data[prv_id][6], qa_data[prv_id][7]
