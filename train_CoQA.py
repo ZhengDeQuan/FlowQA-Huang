@@ -158,7 +158,8 @@ def main():
     opt['num_features'] += args.explicit_dialog_ctx * 3 # dialog_act + previous answer
     if opt['use_elmo'] == False:
         opt['elmo_batch_size'] = 0
-    CoQAEval = CoQAEvaluator("CoQA/dev.json")
+    #CoQAEval = CoQAEvaluator("CoQA/dev.json")
+    CoQAEval = CoQAEvaluator("CoQA/sampleDev.json")
     log.info('[Data loaded.]')
 
     if args.resume:
@@ -258,7 +259,7 @@ def load_train_data(opt):
         data = msgpack.load(f, encoding='utf8')
     #data_orig = pd.read_csv(os.path.join(args.train_dir, 'train.csv'))
 
-    opt['num_features'] = len(data['context_features'][0][0])
+    opt['num_features'] = len(data['context_features'][0][0]) #4，第0个item的第0个word，对应的特征有两大类，第一大类有三种，第二大类有一种
 
     train = {'context': list(zip(
                         data['context_ids'],

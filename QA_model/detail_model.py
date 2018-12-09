@@ -129,7 +129,7 @@ class FlowQA(nn.Module):
 
     def forward(self, x1, x1_c, x1_f, x1_pos, x1_ner, x1_mask, x2_full, x2_c, x2_full_mask):
         """Inputs:
-        x1 = document word indices             [batch * len_d]
+        x1 = document word indices             [batch * len_d] len_d:len_document
         x1_c = document char indices           [batch * len_d * len_w] or [1]
         x1_f = document word features indices  [batch * q_num * len_d * nfeat]
         x1_pos = document POS tags             [batch * len_d]

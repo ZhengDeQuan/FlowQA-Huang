@@ -311,19 +311,25 @@ class BatchGen_CoQA:
 
             # Process Context-Question Features
             feature_len = len(qa_data[0][2][0])
-            context_feature = torch.Tensor(batch_size, question_num, context_len, feature_len + (self.dialog_ctx * 3)).fill_(0)
+            context_feature = torch.Tensor(batch_size, question_num, context_len, feature_len + (self.dialog_ctx * 3)).fill_(0) #self.dialog_ctx * 3 是因为答案的结果有4种，1。NA 2，YES 3。NO 4。抽取的span，NA的应该不用标志
             for i, q_seq in enumerate(question_batch):
                 for j, id in enumerate(q_seq):
                     doc = qa_data[id][2]
                     select_len = min(len(doc), context_len)
                     context_feature[i, j, :select_len, :feature_len] = torch.Tensor(doc[:select_len])
 
-                    for prv_ctx in range(0, self.dialog_ctx):
+                    for prv_ctx in range(0, self.dialog_ctx): #self.dialog_ctx = 1
                         if j > prv_ctx:
                             prv_id = id - prv_ctx - 1
                             prv_ans_st, prv_ans_end, prv_rat_st, prv_rat_end, prv_ans_choice = qa_data[prv_id][3], qa_data[prv_id][4], qa_data[prv_id][5], qa_data[prv_id][6], qa_data[prv_id][7]
 
                             if prv_ans_choice == 3:
+                                '''
+                                answer_choice = 0 if answer == '__NA__' else\
+                                1 if answer == '__YES__' else\
+                                2 if answer == '__NO__' else\
+                                3 # Not a yes/no question
+                                '''
                                 # There is an answer
                                 for k in range(prv_ans_st, prv_ans_end + 1):
                                     if k >= context_len:
@@ -331,22 +337,24 @@ class BatchGen_CoQA:
                                     context_feature[i, j, k, feature_len + prv_ctx * 3 + 1] = 1
                             else:
                                 context_feature[i, j, :select_len, feature_len + prv_ctx * 3 + 2] = 1
+                                #还应该有一个是+3的情况吧
 
             # Process Answer (w/ raw question, answer text)
             answer_s = torch.LongTensor(batch_size, question_num).fill_(0)
             answer_e = torch.LongTensor(batch_size, question_num).fill_(0)
             rationale_s = torch.LongTensor(batch_size, question_num).fill_(0)
             rationale_e = torch.LongTensor(batch_size, question_num).fill_(0)
+            #answer_c代表 answer_choice
             answer_c = torch.LongTensor(batch_size, question_num).fill_(0)
             overall_mask = torch.ByteTensor(batch_size, question_num).fill_(0)
             question, answer = [], []
             for i, q_seq in enumerate(question_batch):
                 question_pack, answer_pack = [], []
                 for j, id in enumerate(q_seq):
-                    answer_s[i, j], answer_e[i, j], rationale_s[i, j], rationale_e[i, j], answer_c[i, j] = qa_data[id][3], qa_data[id][4], qa_data[id][5], qa_data[id][6], qa_data[id][7]
+                    answer_s[i, j], answer_e[i, j], rationale_s[i, j], rationale_e[i, j], answer_c[i, j] = qa_data[id][3], qa_data[id][4], qa_data[id][5], qa_data[id][6], qa_data[id][7] #[7] ->  data['answer_choice'],
                     overall_mask[i, j] = 1
-                    question_pack.append(qa_data[id][8])
-                    answer_pack.append(qa_data[id][9])
+                    question_pack.append(qa_data[id][8]) #question的str, last_ans + // + question
+                    answer_pack.append(qa_data[id][9]) #answer的str
                 question.append(question_pack)
                 answer.append(answer_pack)
 
