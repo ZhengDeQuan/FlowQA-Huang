@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 import torch
 import pickle
 import torch.nn as nn
@@ -12,6 +13,8 @@ class FlowQA(nn.Module):
         super(FlowQA, self).__init__()
 
         # Input size to RNN: word emb + char emb + question emb + manual features
+        # 依我看 Input size = word embedding + CoVe embedding + Elmo embedding
+        #这个 +question emb是什么意思啊
         doc_input_size = 0
         que_input_size = 0
 
@@ -31,10 +34,20 @@ class FlowQA(nn.Module):
                     for p in self.embedding.parameters():
                         p.requires_grad = False
                 else:
-                    assert opt['tune_partial'] < embedding.size(0)
+                    assert opt['tune_partial'] < embedding.size(0) #tune_partial == 1000 只是微调前1000个最常用的word的embedding
                     fixed_embedding = embedding[opt['tune_partial']:]
                     # a persistent buffer for the nn.Module
                     self.register_buffer('fixed_embedding', fixed_embedding)
+                    '''
+                    register_buffer(name, tensor)
+                    给module添加一个persistent buffer。
+                    
+                    persistent buffer通常被用在这么一种情况：我们需要保存一个状态，但是这个状态不能看作成为模型参数。 例如：, BatchNorm’s running_mean 不是一个 parameter, 但是它也是需要保存的状态之一。
+                    
+                    Buffers可以通过注册时候的name获取。
+                    
+                    NOTE:我们可以用 buffer 保存 moving average
+                    '''
                     self.fixed_embedding = fixed_embedding
             embedding_dim = opt['embedding_dim']
             doc_input_size += embedding_dim
@@ -131,6 +144,7 @@ class FlowQA(nn.Module):
         """Inputs:
         x1 = document word indices             [batch * len_d] len_d:len_document
         x1_c = document char indices           [batch * len_d * len_w] or [1]
+        x1_c have precompute times batch example , that 's why , i hope i can got answer here
         x1_f = document word features indices  [batch * q_num * len_d * nfeat]
         x1_pos = document POS tags             [batch * len_d]
         x1_ner = document entity tags          [batch * len_d]
@@ -143,10 +157,13 @@ class FlowQA(nn.Module):
         # precomputing ELMo is only for context (to speedup computation)
         if self.opt['use_elmo'] and self.opt['elmo_batch_size'] > self.opt['batch_size']: # precomputing ELMo is used
             if x1_c.dim() != 1: # precomputation is needed
-                precomputed_bilm_output = self.elmo._elmo_lstm(x1_c)
+                precomputed_bilm_output = self.elmo._elmo_lstm(x1_c)#ZQ:here finally resolve my problem
                 self.precomputed_layer_activations = [t.detach().cpu() for t in precomputed_bilm_output['activations']]
+                #detach()从当前的图中分离，.cpu()放到cpu()上
                 self.precomputed_mask_with_bos_eos = precomputed_bilm_output['mask'].detach().cpu()
                 self.precomputed_cnt = 0
+                #下面precomputed_cnt 这个值会加1，程序采用这种做法，讲context的elmo的embeddding提前取出来，存在self.precomputed_layer_activates 和self.precomputed_mask_with_bos_eos中
+                #每次还是取正常的一个batch大小，precompute_cnt的值会在0-elmo_batch_size // batch_size 之间变化
 
             # get precomputed ELMo
             layer_activations = [t[x1.size(0) * self.precomputed_cnt: x1.size(0) * (self.precomputed_cnt + 1), :, :] for t in self.precomputed_layer_activations]
