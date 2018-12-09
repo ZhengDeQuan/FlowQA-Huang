@@ -48,8 +48,8 @@ log = logging.getLogger(__name__)
 
 log.info('start data preparing... (using {} threads)'.format(args.threads))
 
-# glove_vocab = load_glove_vocab(wv_file, wv_dim) # return a "set" of vocabulary
-# log.info('glove loaded.')
+glove_vocab = load_glove_vocab(wv_file, wv_dim) # return a "set" of vocabulary
+log.info('glove loaded.')
 
 #===============================================================
 #=================== Work on training data =====================
@@ -89,6 +89,9 @@ def proc_train(ith, article):
 train, train_context = flatten_json(trn_file, proc_train)
 train = pd.DataFrame(train, columns=['context_idx', 'question', 'answer', 'answer_start', 'answer_end', 'rationale', 'rationale_start', 'rationale_end', 'answer_choice'])
 
+print(train)
+log.info("huangxiayudidit")
+exit(90)
 
 log.info('train json data flattened.')
 # log.info("train = ")
