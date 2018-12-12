@@ -63,14 +63,15 @@ class FlowQA(nn.Module):
             que_input_size += CoVe_size
 
         if opt['use_elmo']:
-            options_file = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json"
-            weight_file = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5"
+            options_file = "/data1/zhengquan/data/allennlpElmoWeight/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json"
+            weight_file = "/data1/zhengquan/data/allennlpElmoWeight/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5"
             self.elmo = Elmo(options_file, weight_file, 1, dropout=0)
             doc_input_size += 1024
             que_input_size += 1024
         if opt['use_pos']:
             self.pos_embedding = nn.Embedding(opt['pos_size'], opt['pos_dim'])
             doc_input_size += opt['pos_dim']
+
         if opt['use_ner']:
             self.ner_embedding = nn.Embedding(opt['ner_size'], opt['ner_dim'])
             doc_input_size += opt['ner_dim']
@@ -88,7 +89,7 @@ class FlowQA(nn.Module):
         doc_hidden_size, que_hidden_size = doc_input_size, que_input_size
         print('Initially, the vector_sizes [doc, query] are', doc_hidden_size, que_hidden_size)
 
-        flow_size = opt['hidden_size']
+        flow_size = opt['hidden_size'] #default=125
 
         # RNN document encoder
         self.doc_rnn1 = layers.StackedBRNN(doc_hidden_size, opt['hidden_size'], num_layers=1)
@@ -141,6 +142,10 @@ class FlowQA(nn.Module):
         self.opt = opt
 
     def forward(self, x1, x1_c, x1_f, x1_pos, x1_ner, x1_mask, x2_full, x2_c, x2_full_mask):
+        #在model_CoQA.py中的QA_model中被调用。
+        #输入的9个是
+        #context_id, context_cid, context_feature, context_tag, context_ent, context_mask,
+        #           question_id, question_cid, question_mask,
         """Inputs:
         x1 = document word indices             [batch * len_d] len_d:len_document
         x1_c = document char indices           [batch * len_d * len_w] or [1]

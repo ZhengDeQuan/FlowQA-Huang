@@ -232,6 +232,7 @@ class BatchGen_CoQA:#从这里可以解答我的第二个疑惑，他是怎么�
 
     def __len__(self):
         return (self.context_num + self.batch_size - 1) // self.batch_size #context_num / batch_size 向上取整，如果是这么搞的话，恐怕真的是全部的sess都放进去，那么他就不用滑窗了，这个要搞死我了
+
     def __iter__(self):
         # Random permutation for the context
         idx_perm = range(0, self.context_num)
