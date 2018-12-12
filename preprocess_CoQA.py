@@ -100,7 +100,7 @@ log.info('train json data flattened.')
 
 trC_iter = (pre_proc(c) for c in train_context)
 trQ_iter = (pre_proc(q) for q in train.question)
-trC_docs = [doc for doc in nlp.pipe(trC_iter, batch_size=64, n_threads=args.threads)] #这一节的操作是为了分词吗
+trC_docs = [doc for doc in nlp.pipe(trC_iter, batch_size=64, n_threads=args.threads)] #这一节的操作是为了分词吗, 除了分词也把每个单词的tag和ner种类都识别出来了
 trQ_docs = [doc for doc in nlp.pipe(trQ_iter, batch_size=64, n_threads=args.threads)]
 
 
