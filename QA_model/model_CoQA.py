@@ -74,29 +74,36 @@ class QAModel(object):
             rationale_e = batch[14].cuda(non_blocking=True)
         else:
             inputs = [e for e in batch[:9]]
-            overall_mask = batch[9]
+            overall_mask = batch[9] #[batch,num_q]
 
             answer_s = batch[10]
             answer_e = batch[11]
-            answer_c = batch[12]
+            answer_c = batch[12] #[batch,num_q]
             rationale_s = batch[13]
             rationale_e = batch[14]
 
         # Run forward
-        # output: [batch_size, question_num, context_len], [batch_size, question_num]
+        # output: [batch_size, question_num, context_len], [batch_size, question_num] for score_c
         score_s, score_e, score_c = self.network(*inputs)
 
-        # Compute loss and accuracies
+        # Compute loss and accuracies # 'elmo_lambda' default=0.0
         loss = self.opt['elmo_lambda'] * (self.network.elmo.scalar_mix_0.scalar_parameters[0] ** 2
                                         + self.network.elmo.scalar_mix_0.scalar_parameters[1] ** 2
                                         + self.network.elmo.scalar_mix_0.scalar_parameters[2] ** 2) # ELMo L2 regularization
-        all_no_span = (answer_c != 3)
+        all_no_span = (answer_c != 3) #真为1，假为0， dtype=torch.uint8
         answer_s.masked_fill_(all_no_span, -100) # ignore_index is -100 in F.cross_entropy
         answer_e.masked_fill_(all_no_span, -100)
+        '''
+        answer_choice = 0 if answer == '__NA__' else\
+                        1 if answer == '__YES__' else\
+                        2 if answer == '__NO__' else\
+                        3 # Not a yes/no question
+        只有第三类是可以抽取的
+        '''
         rationale_s.masked_fill_(all_no_span, -100) # ignore_index is -100 in F.cross_entropy
         rationale_e.masked_fill_(all_no_span, -100)
 
-        for i in range(overall_mask.size(0)):
+        for i in range(overall_mask.size(0)): #[batch,num_q]
             q_num = sum(overall_mask[i]) # the true question number for this sampled context
 
             target_s = answer_s[i, :q_num] # Size: q_num

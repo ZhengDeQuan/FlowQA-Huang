@@ -58,7 +58,7 @@ class StackedBRNN(nn.Module):
     def forward(self, x, x_mask=None, return_list=False, additional_x=None, previous_hiddens=None):
         # return_list: return a list for layers of hidden vectors
         # Transpose batch and sequence dims
-        x = x.transpose(0, 1)
+        x = x.transpose(0, 1) #因为要过RNN，所以把sequence这个维度放在第一位
         if additional_x is not None:
             additional_x = additional_x.transpose(0, 1)
 
@@ -88,7 +88,7 @@ class StackedBRNN(nn.Module):
 
         # Concat hidden layers
         if self.concat_layers:
-            output = torch.cat(hiddens[1:], 2)
+            output = torch.cat(hiddens[1:], 2) #hidden[0]是最开始输入的x，不是输出的内容
         else:
             output = hiddens[-1]
 
@@ -97,6 +97,9 @@ class StackedBRNN(nn.Module):
         else:
             return output
 
+#detail_model.py中调用
+# self.question_rnn, que_hidden_size = layers.RNN_from_opt(que_hidden_size, opt['hidden_size'], opt,
+#         num_layers=2, concat_rnn=opt['concat_rnn'], add_feat=CoVe_size)
 def RNN_from_opt(input_size_, hidden_size_, opt, num_layers=-1, concat_rnn=None, add_feat=0, dialog_flow=False):
     RNN_TYPES = {'lstm': nn.LSTM, 'gru': nn.GRU, 'rnn': nn.RNN}
     new_rnn = StackedBRNN(
@@ -145,7 +148,7 @@ class MemoryLasagna_Time(nn.Module):
             memory = (memory, memory)
         return h, memory
 
-class MTLSTM(nn.Module):
+class MTLSTM(nn.Module):#QA_model中的Cove:self.CoVe = layers.MTLSTM(opt, embedding)
     def __init__(self, opt, embedding=None, padding_idx=0):
         """Initialize an MTLSTM
 
@@ -226,7 +229,7 @@ class AttentionScore(nn.Module):
         self.linear = nn.Linear(input_size, attention_hidden_size, bias=False)
 
         if similarity_score:
-            self.linear_final = Parameter(torch.ones(1, 1, 1) / (attention_hidden_size ** 0.5), requires_grad = False)
+            self.linear_final = Parameter(torch.ones(1, 1, 1) / (attention_hidden_size ** 0.5), requires_grad = False) #self_attention中要将 除以跟号k
         else:
             self.linear_final = Parameter(torch.ones(1, 1, attention_hidden_size), requires_grad = True)
 
@@ -239,24 +242,27 @@ class AttentionScore(nn.Module):
         x1 = dropout(x1, p=my_dropout_p, training=self.training)
         x2 = dropout(x2, p=my_dropout_p, training=self.training)
 
-        x1_rep = self.linear(x1.contiguous().view(-1, x1.size(-1))).view(x1.size(0), x1.size(1), -1)
+        x1_rep = self.linear(x1.contiguous().view(-1, x1.size(-1))).view(x1.size(0), x1.size(1), -1) #[batch,len_d,emb_dim] -> [batch * len_d, emb_dim] -过了linear之后-> [batch , len_d, emb_dim]
         x2_rep = self.linear(x2.contiguous().view(-1, x2.size(-1))).view(x2.size(0), x2.size(1), -1)
 
         x1_rep = F.relu(x1_rep)
         x2_rep = F.relu(x2_rep)
         final_v = self.linear_final.expand_as(x2_rep)
 
-        x2_rep_v = final_v * x2_rep
-        scores = x1_rep.bmm(x2_rep_v.transpose(1, 2))
+        x2_rep_v = final_v * x2_rep #应该是语法上的需要，这么做完之后会逻辑上，x2_rep的值没有变
+        scores = x1_rep.bmm(x2_rep_v.transpose(1, 2)) #[batch ， len_d , len_q]
         return scores
 
-
-class GetAttentionHiddens(nn.Module):
+class GetAttentionHiddens(nn.Module):#QA_model类中的pre_align
     def __init__(self, input_size, attention_hidden_size, similarity_attention = False):
         super(GetAttentionHiddens, self).__init__()
         self.scoring = AttentionScore(input_size, attention_hidden_size, similarity_score=similarity_attention)
 
     def forward(self, x1, x2, x2_mask, x3=None, scores=None, return_scores=False, drop_diagonal=False):
+        # 在Start processing the dialog 之前调用,调用时，只输入了x1,x2,x2_mask
+        #x1 [batch * num_q , len_d , emb_dim]
+        #x2 [batch * num_q , len_q , emb_dim]
+        # 进入到这里之后为了表示的简单，之后会直接用batch来表示第一个维度
         """
         Using x1, x2 to calculate attention score, but x1 will take back info from x3.
         If x3 is not specified, x1 will attend on x2.
@@ -267,32 +273,35 @@ class GetAttentionHiddens(nn.Module):
 
         x3: batch * len2 * x3_input_size (or None)
         """
+        #感觉上面的解释，就像attention中的x1 , x2 , x3 == query , key , value , 一般key不都是等于value的嘛
         if x3 is None:
             x3 = x2
 
         if scores is None:
-            scores = self.scoring(x1, x2)
+            scores = self.scoring(x1, x2) #算出x1和x2之间每个单词的相似性 [batch , len_d , len_q]
 
         # Mask padding
-        x2_mask = x2_mask.unsqueeze(1).expand_as(scores)
-        scores.data.masked_fill_(x2_mask.data, -float('inf'))
+        x2_mask = x2_mask.unsqueeze(1).expand_as(scores) #[batch , 1 , len_q] --> [batch , len_d , len_q]
+        #  但是在len_d 这个维度上扩展的时候是按照最长的长度扩展，同一个batch内的不同的数据的document很有可能有不同的len_d啊
+        # 不在len_d这个维度上扩展是为了防止nan，见下面对于F.softmax的注释
+        scores.data.masked_fill_(x2_mask.data, -float('inf')) #在x2_mask.data值为1的地方全部都填上了值 -inf
         if drop_diagonal:
-            assert(scores.size(1) == scores.size(2))
+            assert(scores.size(1) == scores.size(2)) #只有score是一个方阵的时候才能对对角线进行操作
             diag_mask = torch.diag(scores.data.new(scores.size(1)).zero_() + 1).byte().unsqueeze(0).expand_as(scores)
             scores.data.masked_fill_(diag_mask, -float('inf'))
 
         # Normalize with softmax
-        alpha = F.softmax(scores, dim=2)
+        alpha = F.softmax(scores, dim=2) #如果上面某一行都是1的话，就会有[-inf,-inf,-inf]的情况，那么最后的softmax结果就是[nan , nan ,nan] ，所以上文想到的对len_d这个维度的mask也加入是不满足语法要求的
 
         # Take weighted average
         matched_seq = alpha.bmm(x3)
-        if return_scores:
+        if return_scores: #可以设置一个变量，决定是否返回，我当初就没想到要这么做。
             return matched_seq, scores
         else:
             return matched_seq
 
 class DeepAttention(nn.Module):
-    def __init__(self, opt, abstr_list_cnt, deep_att_hidden_size_per_abstr, do_similarity=False, word_hidden_size=None, do_self_attn=False, dialog_flow=False, no_rnn=False):
+    def __init__(self, opt, abstr_list_cnt, deep_att_hidden_size_per_abstr, do_similarity=False, word_hidden_size=None, do_self_attn=False, dialog_flow=False, no_rnn=False):#实例化时no_rnn = True
         super(DeepAttention, self).__init__()
 
         self.no_rnn = no_rnn
@@ -324,12 +333,12 @@ class DeepAttention(nn.Module):
         """
         # the last tensor of x2_abstr is an addtional tensor
         x1_att = torch.cat(x1_word + x1_abstr, 2)
-        x2_att = torch.cat(x2_word + x2_abstr[:-1], 2)
-        x1 = torch.cat(x1_abstr, 2)
+        x2_att = torch.cat(x2_word + x2_abstr[:-1], 2) # 问题方面的最后一个不取，因为最后一个是前两层拼接之后的结果，应该只是要这个的rnn隐层的最后一个单元，输入最后的预测模块
+        x1 = torch.cat(x1_abstr, 2) #[batch * num_q , len_d , hidden * 2 * 2]
 
         x2_list = x2_abstr
-        for i in range(len(x2_list)):
-            attn_hiddens = self.int_attn_list[i](x1_att, x2_att, x2_mask, x3=x2_list[i], drop_diagonal=self.do_self_attn)
+        for i in range(len(x2_list)):#3
+            attn_hiddens = self.int_attn_list[i](x1_att, x2_att, x2_mask, x3=x2_list[i], drop_diagonal=self.do_self_attn) #history-aware attention, (q,k,v)中q,k都是篇章与问题的所有的过往的层的拼接，v只是问题的当前要计算的层的表征
             x1 = torch.cat((x1, attn_hiddens), 2)
 
         if not self.no_rnn:
@@ -342,7 +351,7 @@ class DeepAttention(nn.Module):
             return x1
 
 # For summarizing a set of vectors into a single vector
-class LinearSelfAttn(nn.Module):
+class LinearSelfAttn(nn.Module): #这个不是真的自注意力机制，是利用一个额外的向量z，对各个hidden进行点乘的注意力分数
     """Self attention over a sequence:
     * o_i = softmax(Wx_i) for x_i in X.
     """
@@ -357,7 +366,8 @@ class LinearSelfAttn(nn.Module):
         """
         x = dropout(x, p=my_dropout_p, training=self.training)
 
-        x_flat = x.contiguous().view(-1, x.size(-1))
+        x_flat = x.contiguous().view(-1, x.size(-1)) #[batch*len , hdim]
+        #             [batch*len , 1]-->[batch , len]
         scores = self.linear(x_flat).view(x.size(0), x.size(1))
         scores.data.masked_fill_(x_mask.data, -float('inf'))
         alpha = F.softmax(scores, dim=1)
@@ -380,6 +390,7 @@ class BilinearSeqAttn(nn.Module):
         x = batch * len * h1
         y = batch * h2
         x_mask = batch * len
+        return xWy batch * len
         """
         x = dropout(x, p=my_dropout_p, training=self.training)
         y = dropout(y, p=my_dropout_p, training=self.training)
@@ -401,21 +412,21 @@ class GetSpanStartEnd(nn.Module):
 
     def forward(self, x, h0, x_mask):
         """
-        x = batch * len * x_size
-        h0 = batch * h_size
+        x = batch * len * x_size 篇章信息（结合了问题的信息）
+        h0 = batch * h_size 问题总结信息
         x_mask = batch * len
         """
-        st_scores = self.attn(x, h0, x_mask)
+        st_scores = self.attn(x, h0, x_mask) #在计算attention score的模块内打mask，在外部，比如下面写的这样，再归一化
         # st_scores = batch * len
 
         if self.rnn is not None:
-            ptr_net_in = torch.bmm(F.softmax(st_scores, dim=1).unsqueeze(1), x).squeeze(1)
+            ptr_net_in = torch.bmm(F.softmax(st_scores, dim=1).unsqueeze(1), x).squeeze(1) #[batch , x_hid_size]
             ptr_net_in = dropout(ptr_net_in, p=my_dropout_p, training=self.training)
             h0 = dropout(h0, p=my_dropout_p, training=self.training)
-            h1 = self.rnn(ptr_net_in, h0)
+            h1 = self.rnn(ptr_net_in, h0) #这个rnn只走一步,rnn只是一个GRUCell,然后输入的ptr_net是[batch , x_hid_size]
             # h1 same size as h0
         else:
-            h1 = h0
+            h1 = h0 #否则 h1 = h0,这个很难懂，用在哪里，h0是问题信息的融合
 
         end_scores = self.attn(x, h1, x_mask) if self.attn2 is None else\
                      self.attn2(x, h1, x_mask)
@@ -437,9 +448,11 @@ class BilinearLayer(nn.Module):
         y = dropout(y, p=my_dropout_p, training=self.training)
 
         Wy = self.linear(y)
-        Wy = Wy.view(Wy.size(0), self.class_num, x.size(1))
-        xWy = torch.sum(x.unsqueeze(1).expand_as(Wy) * Wy, dim=2)
+        Wy = Wy.view(Wy.size(0), self.class_num, x.size(1)) #[batch , class_num , h1 ]
+        #               #[batch , 1 , h1]
+        xWy = torch.sum(x.unsqueeze(1).expand_as(Wy) * Wy, dim=2) #[batch , class_num , 1]
         return xWy.squeeze(-1) # size = batch * class_num
+        #没有归一化softmax
 
 # ------------------------------------------------------------------------------
 # Functional
@@ -462,4 +475,4 @@ def weighted_avg(x, weights): # used in lego_reader.py
     """ x = batch * len * d
         weights = batch * len
     """
-    return weights.unsqueeze(1).bmm(x).squeeze(1)
+    return weights.unsqueeze(1).bmm(x).squeeze(1) #[batch , hid]
