@@ -161,13 +161,13 @@ class MTLSTM(nn.Module):#QA_model中的Cove:self.CoVe = layers.MTLSTM(opt, embed
         if embedding is not None:
             self.embedding.weight.data = embedding
 
-        state_dict = torch.load(opt['MTLSTM_path'])
+        state_dict = torch.load(opt['MTLSTM_path']) #加载CoVe向量
         self.rnn1 = nn.LSTM(300, 300, num_layers=1, bidirectional=True)
         self.rnn2 = nn.LSTM(600, 300, num_layers=1, bidirectional=True)
 
         state_dict1 = dict([(name, param.data) if isinstance(param, Parameter) else (name, param)
                         for name, param in state_dict.items() if '0' in name])
-        state_dict2 = dict([(name.replace('1', '0'), param.data) if isinstance(param, Parameter) else (name.replace('1', '0'), param)
+        state_dict2 = dict([(name.replace('1', '0'), param.data) if isinstance(param, Parameter) else (name.replace('1', '0'), param) #name.repalce是字符串操作
                         for name, param in state_dict.items() if '1' in name])
         self.rnn1.load_state_dict(state_dict1)
         self.rnn2.load_state_dict(state_dict2)
@@ -255,6 +255,8 @@ class AttentionScore(nn.Module):
 
 class GetAttentionHiddens(nn.Module):#QA_model类中的pre_align
     def __init__(self, input_size, attention_hidden_size, similarity_attention = False):
+        #在detail_model中调用的情况
+        #self.pre_align = layers.GetAttentionHiddens(embedding_dim, opt['prealign_hidden'], similarity_attention=True)
         super(GetAttentionHiddens, self).__init__()
         self.scoring = AttentionScore(input_size, attention_hidden_size, similarity_score=similarity_attention)
 
