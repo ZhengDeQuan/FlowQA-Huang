@@ -83,7 +83,7 @@ class QAModel(object):
             rationale_e = batch[14]
 
         # Run forward
-        # output: [batch_size, question_num, context_len], [batch_size, question_num] for score_c
+        # output: [batch_size, question_num, context_len],[batch , q_num , class_num] for score_c (score_c :score_class 预测问题是哪一类的)
         score_s, score_e, score_c = self.network(*inputs)
 
         # Compute loss and accuracies # 'elmo_lambda' default=0.0
@@ -119,11 +119,12 @@ class QAModel(object):
                          + F.cross_entropy(score_e[i, :q_num], target_e) * (q_num - sum(target_no_span)).item() / 12.0)
                          #+ self.opt['rationale_lambda'] * F.cross_entropy(score_s_r[i, :q_num], target_s_r) * (q_num - sum(target_no_span)).item() / 12.0
                          #+ self.opt['rationale_lambda'] * F.cross_entropy(score_e_r[i, :q_num], target_e_r) * (q_num - sum(target_no_span)).item() / 12.0)
+            #问题：15和12这两个超参数代表什么，平均就是除以个数，这个15和12是什么的个数
 
-            loss = loss + (single_loss / overall_mask.size(0))
+            loss = loss + (single_loss / overall_mask.size(0)) #single_loss 是一个example中所有的问题的loss加和，分母应该是size(1)吧
         self.train_loss.update(loss.item(), overall_mask.size(0))
 
-        # Clear gradients and run backward
+        # Clear gradients and run backward #清除上一次的计算后得到的梯度
         self.optimizer.zero_grad()
         loss.backward()
 
@@ -228,7 +229,7 @@ class QAModel(object):
         # Reset fixed embeddings to original value
         if self.opt['tune_partial'] > 0:
             offset = self.opt['tune_partial']
-            if offset < self.network.embedding.weight.data.size(0):
+            if offset < self.network.embedding.weight.data.size(0): #offset之后的单词的embedding不改变
                 self.network.embedding.weight.data[offset:] \
                     = self.network.fixed_embedding
 
